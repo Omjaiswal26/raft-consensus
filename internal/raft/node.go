@@ -8,13 +8,15 @@ import (
 )
 
 type Node struct {
-	Record        *models.RaftNode
-	ElectionTimer *time.Timer
-	mu            sync.Mutex
+	Record            *models.RaftNode
+	Peers             []*Node
+	ElectionTimer     *time.Timer
+	electionTimeoutCh chan struct{}
+	mu                sync.Mutex
 }
 
 func NewNode(record *models.RaftNode) *Node {
-	return &Node{Record: record}
+	return &Node{Record: record, electionTimeoutCh: make(chan struct{}, 1)}
 }
 
 func (n *Node) ResetElectionTimer() {
@@ -27,7 +29,16 @@ func (n *Node) ResetElectionTimer() {
 		}
 	}
 
-	n.ElectionTimer = time.NewTimer(RandomElectionTimeout())
+	timer := time.NewTimer(RandomElectionTimeout())
+	n.ElectionTimer = timer
+
+	go func(t *time.Timer) {
+		<-t.C
+		select {
+		case n.electionTimeoutCh <- struct{}{}:
+		default:
+		}
+	}(timer)
 }
 
 func (n *Node) BecomeFollower(term int) {
@@ -67,21 +78,129 @@ func (n *Node) BecomeCandidate() {
 }
 
 func (n *Node) startElection() {
-	// TODO: send RequestVote RPCs to all peers
-	log.Printf("Node %d would request votes for term %d", n.Record.ID, n.Record.CurrentTerm)
+	n.mu.Lock()
+	term := n.Record.CurrentTerm
+	candidateID := int(n.Record.ID)
+	lastIndex := n.lastLogIndex()
+	lastTerm := n.lastLogTerm()
+	peers := n.Peers
+	n.mu.Unlock()
+
+	votes := 1
+
+	args := RequestVoteArgs{
+		Term:         term,
+		CandidateID:  candidateID,
+		LastLogIndex: lastIndex,
+		LastLogTerm:  lastTerm,
+	}
+
+	for _, peer := range peers {
+		var reply RequestVoteReply
+		peer.HandleRequestVote(args, &reply)
+
+		n.mu.Lock()
+		if reply.Term > n.Record.CurrentTerm {
+			n.mu.Unlock()
+			n.BecomeFollower(reply.Term)
+			return
+		}
+
+		if reply.VoteGranted {
+			votes++
+		}
+
+		n.mu.Unlock()
+	}
+
+	majority := len(peers)/2 + 1
+
+	n.mu.Lock()
+	stillCandidate := n.Record.State == "candidate" && n.Record.CurrentTerm == term
+	n.mu.Unlock()
+
+	if stillCandidate && votes >= majority {
+		n.BecomeLeader()
+	}
 }
 
+func (n *Node) BecomeLeader() {
+	n.mu.Lock()
+	n.Record.State = "leader"
+	leaderID := int(n.Record.ID)
+	n.Record.LeaderID = &leaderID
+	term := n.Record.CurrentTerm
+	n.mu.Unlock()
+
+	if n.ElectionTimer != nil {
+		n.ElectionTimer.Stop()
+	}
+
+	log.Printf("Node %d became leader for term %d", n.Record.ID, term)
+}
+
+func (n *Node) lastLogIndex() int {
+	return len(n.Record.LogEntries)
+}
+
+func (n *Node) lastLogTerm() int {
+	if len(n.Record.LogEntries) == 0 {
+		return 0
+	}
+
+	return n.Record.LogEntries[len(n.Record.LogEntries)-1].Term
+}
+
+func (n *Node) isLogUpToDate(candidateLastIndex, candidateLastTerm int) bool {
+	ourTerm := n.lastLogTerm()
+	if candidateLastTerm != ourTerm {
+		return candidateLastTerm > ourTerm
+	}
+
+	return candidateLastIndex >= n.lastLogIndex()
+}
+
+func (n *Node) HandleRequestVote(args RequestVoteArgs, reply *RequestVoteReply) {
+	n.mu.Lock()
+
+	reply.Term = n.Record.CurrentTerm
+	reply.VoteGranted = false
+
+	// Rule 1: stale term -> reject
+	if args.Term < n.Record.CurrentTerm {
+		n.mu.Unlock()
+		return
+	}
+
+	// Rule 2: higher term -> step down to follower
+	if args.Term > n.Record.CurrentTerm {
+		n.Record.CurrentTerm = args.Term
+		n.Record.VotedFor = nil
+		reply.Term = n.Record.CurrentTerm
+	}
+
+	// Rule 3: grant if not voted yet (or already voted for them) AND log is fresh enough
+
+	candidateID := args.CandidateID
+	if (n.Record.VotedFor == nil || *n.Record.VotedFor == candidateID) && n.isLogUpToDate(args.LastLogIndex, args.LastLogTerm) {
+		n.Record.VotedFor = &candidateID
+		reply.VoteGranted = true
+	}
+
+	granted := reply.VoteGranted
+	n.mu.Unlock()
+
+	// Rule 4: granting vote resets election timer (heard from  a valid candidate)
+
+	if granted {
+		n.ResetElectionTimer()
+	}
+}
 
 func (n *Node) Start() {
 	go func() {
 		n.BecomeFollower(0)
-
-		for {
-			n.mu.Lock()
-			timer := n.ElectionTimer
-			n.mu.Unlock()
-
-			<-timer.C
+		for range n.electionTimeoutCh {
 			n.onElectionTimeout()
 		}
 	}()
@@ -95,5 +214,6 @@ func (n *Node) onElectionTimeout() {
 	switch state {
 	case "follower", "candidate":
 		n.BecomeCandidate()
+		// leader: do nothing
 	}
 }

@@ -16,39 +16,34 @@ func InitNodeService(state string, timeout time.Duration) (models.RaftNodeRespon
 		NextIndex:   0,
 		MatchIndex:  0,
 		Timeout:     timeout,
-		Peers:       []*models.RaftNode{},
+		PeerIDs:     []uint{},
 	}
 
 	if err := store.CreateNode(&node); err != nil {
 		return models.RaftNodeResponse{}, err
 	}
 
-	if err := store.UpdateNodePeers(&node); err != nil {
+	if err := store.RefreshAllPeerIDs(); err != nil {
+		return models.RaftNodeResponse{}, err
+	}
+
+	updated, err := store.GetNodeByID(node.ID)
+	if err != nil {
 		return models.RaftNodeResponse{}, err
 	}
 
 	nodeResponse := models.RaftNodeResponse{
-		ID:          node.ID,
-		State:       node.State,
-		CurrentTerm: node.CurrentTerm,
-		VotedFor:    node.VotedFor,
-		Timeout:     node.Timeout,
-		LeaderID:    node.LeaderID,
-		CommitIndex: node.CommitIndex,
-		LastApplied: node.LastApplied,
-		MatchIndex:  node.MatchIndex,
-		Peers:       extractPeerIDs(node.Peers),
+		ID:          updated.ID,
+		State:       updated.State,
+		CurrentTerm: updated.CurrentTerm,
+		VotedFor:    updated.VotedFor,
+		Timeout:     updated.Timeout,
+		LeaderID:    updated.LeaderID,
+		CommitIndex: updated.CommitIndex,
+		LastApplied: updated.LastApplied,
+		MatchIndex:  updated.MatchIndex,
+		Peers:       updated.PeerIDs,
 	}
 
 	return nodeResponse, nil
-}
-
-func extractPeerIDs(peers []*models.RaftNode) []uint {
-	var peerIDs []uint
-
-	for _, peer := range peers {
-		peerIDs = append(peerIDs, peer.ID)
-	}
-
-	return peerIDs
 }

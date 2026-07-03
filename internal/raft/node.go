@@ -11,6 +11,7 @@ type Node struct {
 	Record            *models.RaftNode
 	Peers             []*Node
 	ElectionTimer     *time.Timer
+	heartbeatTicker   *time.Ticker
 	electionTimeoutCh chan struct{}
 	mu                sync.Mutex
 }
@@ -21,24 +22,23 @@ func NewNode(record *models.RaftNode) *Node {
 
 func (n *Node) ResetElectionTimer() {
 	if n.ElectionTimer != nil {
-		if !n.ElectionTimer.Stop() {
-			select {
-			case <-n.ElectionTimer.C:
-			default:
-			}
-		}
+		n.ElectionTimer.Stop()
 	}
 
-	timer := time.NewTimer(RandomElectionTimeout())
-	n.ElectionTimer = timer
-
-	go func(t *time.Timer) {
-		<-t.C
+	d := RandomElectionTimeout()
+	n.ElectionTimer = time.AfterFunc(d, func() {
 		select {
 		case n.electionTimeoutCh <- struct{}{}:
 		default:
 		}
-	}(timer)
+	})
+}
+
+func (n *Node) stopHeartbeats() {
+	if n.heartbeatTicker != nil {
+		n.heartbeatTicker.Stop()
+		n.heartbeatTicker = nil
+	}
 }
 
 func (n *Node) BecomeFollower(term int) {
@@ -54,6 +54,7 @@ func (n *Node) BecomeFollower(term int) {
 
 	n.mu.Unlock()
 
+	n.stopHeartbeats()
 	n.ResetElectionTimer()
 	log.Printf("Node %d became follower for term %d", n.Record.ID, n.Record.CurrentTerm)
 }
@@ -70,6 +71,7 @@ func (n *Node) BecomeCandidate() {
 	term := n.Record.CurrentTerm
 	n.mu.Unlock()
 
+	n.stopHeartbeats()
 	n.ResetElectionTimer()
 	log.Printf("Node %d became candidate for term %d", n.Record.ID, term)
 
@@ -137,6 +139,58 @@ func (n *Node) BecomeLeader() {
 	}
 
 	log.Printf("Node %d became leader for term %d", n.Record.ID, term)
+	n.startHeartbeats()
+}
+
+func (n *Node) startHeartbeats() {
+	n.stopHeartbeats()
+	n.heartbeatTicker = time.NewTicker(heartbeatInterval)
+
+	go func() {
+		n.broadcastHeartbeat()
+		for range n.heartbeatTicker.C {
+			n.mu.Lock()
+			isLeader := n.Record.State == "leader"
+			n.mu.Unlock()
+			if !isLeader {
+				return
+			}
+			n.broadcastHeartbeat()
+		}
+	}()
+}
+
+func (n *Node) broadcastHeartbeat() {
+	n.mu.Lock()
+	if n.Record.State != "leader" {
+		n.mu.Unlock()
+		return
+	}
+
+	args := AppendEntriesArgs{
+		Term:         n.Record.CurrentTerm,
+		LeaderID:     int(n.Record.ID),
+		PrevLogIndex: n.lastLogIndex(),
+		PrevLogTerm:  n.lastLogTerm(),
+		Entries:      nil,
+		LeaderCommit: n.Record.CommitIndex,
+	}
+	peers := n.Peers
+	n.mu.Unlock()
+
+	for _, peer := range peers {
+		var reply AppendEntriesReply
+		peer.HandleAppendEntries(args, &reply)
+
+		n.mu.Lock()
+		if reply.Term > n.Record.CurrentTerm {
+			n.mu.Unlock()
+			n.stopHeartbeats()
+			n.BecomeFollower(reply.Term)
+			return
+		}
+		n.mu.Unlock()
+	}
 }
 
 func (n *Node) lastLogIndex() int {
@@ -176,6 +230,7 @@ func (n *Node) HandleRequestVote(args RequestVoteArgs, reply *RequestVoteReply) 
 	if args.Term > n.Record.CurrentTerm {
 		n.Record.CurrentTerm = args.Term
 		n.Record.VotedFor = nil
+		n.Record.State = "follower"
 		reply.Term = n.Record.CurrentTerm
 	}
 
@@ -195,6 +250,60 @@ func (n *Node) HandleRequestVote(args RequestVoteArgs, reply *RequestVoteReply) 
 	if granted {
 		n.ResetElectionTimer()
 	}
+}
+
+func (n *Node) HandleAppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply) {
+	n.mu.Lock()
+
+	reply.Term = n.Record.CurrentTerm
+	reply.Success = false
+
+	if args.Term < n.Record.CurrentTerm {
+		n.mu.Unlock()
+		return
+	}
+
+	if args.Term > n.Record.CurrentTerm {
+		n.Record.CurrentTerm = args.Term
+		n.Record.VotedFor = nil
+	}
+
+	n.Record.State = "follower"
+	leaderID := args.LeaderID
+	n.Record.LeaderID = &leaderID
+	reply.Term = n.Record.CurrentTerm
+
+	if args.PrevLogIndex > 0 {
+		if args.PrevLogIndex > len(n.Record.LogEntries) {
+			n.mu.Unlock()
+			return
+		}
+		if n.Record.LogEntries[args.PrevLogIndex-1].Term != args.PrevLogTerm {
+			n.mu.Unlock()
+			return
+		}
+	} else if args.PrevLogTerm != 0 {
+		n.mu.Unlock()
+		return
+	}
+
+	if len(args.Entries) > 0 {
+		n.Record.LogEntries = append(n.Record.LogEntries[:args.PrevLogIndex], args.Entries...)
+	}
+
+	if args.LeaderCommit > n.Record.CommitIndex {
+		lastNewIndex := len(n.Record.LogEntries)
+		if args.LeaderCommit < lastNewIndex {
+			n.Record.CommitIndex = args.LeaderCommit
+		} else {
+			n.Record.CommitIndex = lastNewIndex
+		}
+	}
+
+	reply.Success = true
+	n.mu.Unlock()
+
+	n.ResetElectionTimer()
 }
 
 func (n *Node) Start() {

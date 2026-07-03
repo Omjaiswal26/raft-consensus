@@ -1,8 +1,8 @@
 package main
 
 import (
-	"raft-consensus/models"
 	"raft-consensus/internal/raft"
+	"raft-consensus/models"
 )
 
 func main() {
@@ -12,15 +12,20 @@ func main() {
 		raft.NewNode(&models.RaftNode{State: "follower"}),
 	}
 
+	for i, node := range nodes {
+		node.Record.ID = uint(i + 1)
+	}
 
 	for i, node := range nodes {
-		node.Record.ID = uint(i+1)
-		for j, other := range nodes {
+		for j := range nodes {
 			if i != j {
-				node.Peers = append(node.Peers, other)
+				node.Record.PeerIDs = append(node.Record.PeerIDs, uint(j+1))
 			}
 		}
 	}
+
+	raft.WireRuntimePeers(nodes)
+
 	for _, node := range nodes {
 		node.Start()
 	}

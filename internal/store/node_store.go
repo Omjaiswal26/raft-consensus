@@ -13,25 +13,52 @@ func CreateNode(node *models.RaftNode) error {
 	return nil
 }
 
-func UpdateNodePeers(node *models.RaftNode) error {
-	var allNodes []models.RaftNode
+func LoadAllNodes() ([]models.RaftNode, error) {
+	var nodes []models.RaftNode
+	if err := database.DB.Find(&nodes).Error; err != nil {
+		return nil, fmt.Errorf("failed to find all nodes: %w", err)
+	}
+	return nodes, nil
+}
 
-	if err := database.DB.Find(&allNodes).Error; err != nil {
-		return fmt.Errorf("failed to find all nodes: %w", err)
+func GetNodeByID(id uint) (*models.RaftNode, error) {
+	var node models.RaftNode
+	if err := database.DB.First(&node, id).Error; err != nil {
+		return nil, fmt.Errorf("failed to find node %d: %w", id, err)
+	}
+	return &node, nil
+}
+
+func UpdateNodePeerIDs(node *models.RaftNode) error {
+	allNodes, err := LoadAllNodes()
+	if err != nil {
+		return err
 	}
 
-	var peersList []*models.RaftNode
-	for i := range allNodes {
-		if allNodes[i].ID != node.ID {
-			peersList = append(peersList, &allNodes[i])
+	var peerIDs []uint
+	for _, other := range allNodes {
+		if other.ID != node.ID {
+			peerIDs = append(peerIDs, other.ID)
 		}
 	}
 
-	node.Peers = peersList
-
+	node.PeerIDs = peerIDs
 	if err := database.DB.Save(node).Error; err != nil {
-		return fmt.Errorf("failed to update node's peers: %w", err)
+		return fmt.Errorf("failed to update node's peer IDs: %w", err)
+	}
+	return nil
+}
+
+func RefreshAllPeerIDs() error {
+	allNodes, err := LoadAllNodes()
+	if err != nil {
+		return err
 	}
 
+	for i := range allNodes {
+		if err := UpdateNodePeerIDs(&allNodes[i]); err != nil {
+			return err
+		}
+	}
 	return nil
 }

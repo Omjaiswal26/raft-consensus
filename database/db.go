@@ -3,6 +3,7 @@ package database
 import (
 	"log"
 	"raft-consensus/models"
+
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )

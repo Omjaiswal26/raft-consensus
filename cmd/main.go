@@ -2,7 +2,9 @@ package main
 
 import (
 	"log"
+	"raft-consensus/internal/api"
 	"raft-consensus/internal/raft"
+	"raft-consensus/internal/services"
 	"raft-consensus/models"
 	"time"
 )
@@ -51,5 +53,8 @@ func main() {
 			node.RaftNode.ID, node.RaftNode.LogEntries, node.RaftNode.CommitIndex)
 	}
 
-	select {}
+	svc := services.NewClusterService(nodes)
+	h := api.NewClusterHandler(svc)
+	r := api.NewRouter(h)
+	r.Run()
 }

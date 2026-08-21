@@ -7,5 +7,6 @@ import (
 func NewRouter(h *ClusterHandler) *gin.Engine {
 	r := gin.Default()
 	r.GET("/api/cluster", h.GetCluster)
+	r.GET("/ws", h.ServeWS)
 	return r
 }

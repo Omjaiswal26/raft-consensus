@@ -192,6 +192,7 @@ func (n *Node) SubmitCommand(command string) error {
 		if reply.Success {
 			replicated ++
 		}
+		n.mu.Unlock()
 	}
 
 	majority := len(peers)/2 + 1

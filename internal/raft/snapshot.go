@@ -1,12 +1,15 @@
 package raft
 
-import "raft-consensus/models"
+import (
+	"raft-consensus/internal/dto"
+	"raft-consensus/models"
+)
 
-func (n *Node) Snapshot() models.RaftNodeResponse {
+func (n *Node) Snapshot() dto.RaftNodeResponse {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	return models.RaftNodeResponse{
+	return dto.RaftNodeResponse{
 		ID:          n.RaftNode.ID,
 		State:       n.RaftNode.State,
 		CurrentTerm: n.RaftNode.CurrentTerm,

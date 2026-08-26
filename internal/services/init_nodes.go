@@ -1,12 +1,13 @@
 package services
 
 import (
+	"raft-consensus/internal/dto"
 	"raft-consensus/internal/store"
 	"raft-consensus/models"
 	"time"
 )
 
-func InitNodeService(state string, timeout time.Duration) (models.RaftNodeResponse, error) {
+func InitNodeService(state string, timeout time.Duration) (dto.RaftNodeResponse, error) {
 	node := models.RaftNode{
 		State:       state,
 		CurrentTerm: 1,
@@ -20,19 +21,19 @@ func InitNodeService(state string, timeout time.Duration) (models.RaftNodeRespon
 	}
 
 	if err := store.CreateNode(&node); err != nil {
-		return models.RaftNodeResponse{}, err
+		return dto.RaftNodeResponse{}, err
 	}
 
 	if err := store.RefreshAllPeerIDs(); err != nil {
-		return models.RaftNodeResponse{}, err
+		return dto.RaftNodeResponse{}, err
 	}
 
 	updated, err := store.GetNodeByID(node.ID)
 	if err != nil {
-		return models.RaftNodeResponse{}, err
+		return dto.RaftNodeResponse{}, err
 	}
 
-	nodeResponse := models.RaftNodeResponse{
+	nodeResponse := dto.RaftNodeResponse{
 		ID:          updated.ID,
 		State:       updated.State,
 		CurrentTerm: updated.CurrentTerm,

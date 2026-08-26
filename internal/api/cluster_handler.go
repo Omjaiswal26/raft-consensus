@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"raft-consensus/internal/response"
 	"raft-consensus/internal/services"
 	"time"
 
@@ -19,9 +20,7 @@ func NewClusterHandler(service *services.ClusterService) *ClusterHandler {
 
 func (h *ClusterHandler) GetCluster(c *gin.Context) {
 	nodesSnapshot := h.service.Snapshot()
-	c.IndentedJSON(http.StatusOK, gin.H{
-		"nodes": nodesSnapshot,
-	})
+	response.SuccessResponse(c, "Cluster fetched successfully", gin.H{"nodes": nodesSnapshot})
 }
 
 var upgrader = websocket.Upgrader{
@@ -53,14 +52,14 @@ func (h *ClusterHandler) SubmitCommand(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.BadResponse(c, err.Error(), nil)
 		return
 	}
 
 	if err := h.service.SubmitCommand(body.Command); err != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		response.ErrorResponse(c, http.StatusConflict, err.Error())
 		return
 	}
 
-	c.IndentedJSON(http.StatusOK, gin.H{"ok": true})
+	response.SuccessResponse(c, "Command submitted successfully", nil)
 }

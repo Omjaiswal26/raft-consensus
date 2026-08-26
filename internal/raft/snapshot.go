@@ -9,6 +9,11 @@ func (n *Node) Snapshot() dto.RaftNodeResponse {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
+	kvCopy := make(map[string]string, len(n.KV))
+	for k, v := range n.KV {
+		kvCopy[k] = v
+	}
+
 	return dto.RaftNodeResponse{
 		ID:          n.RaftNode.ID,
 		State:       n.RaftNode.State,
@@ -21,5 +26,6 @@ func (n *Node) Snapshot() dto.RaftNodeResponse {
 		MatchIndex:  n.RaftNode.MatchIndex,
 		Peers:       append([]uint(nil), n.RaftNode.PeerIDs...),
 		Log:         append([]models.LogEntry(nil), n.RaftNode.LogEntries...),
+		KV:          kvCopy,
 	}
 }

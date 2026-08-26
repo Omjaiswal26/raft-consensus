@@ -15,10 +15,15 @@ type Node struct {
 	heartbeatTicker   *time.Ticker
 	electionTimeoutCh chan struct{}
 	mu                sync.Mutex
+	KV                map[string]string `json:"-"`
 }
 
 func NewNode(raftNode *models.RaftNode) *Node {
-	return &Node{RaftNode: raftNode, electionTimeoutCh: make(chan struct{}, 1)}
+	return &Node{
+		RaftNode:          raftNode,
+		electionTimeoutCh: make(chan struct{}, 1),
+		KV:                make(map[string]string),
+	}
 }
 
 func (n *Node) ResetElectionTimer() {
@@ -155,18 +160,18 @@ func (n *Node) SubmitCommand(command string) error {
 	prevLogTerm := n.lastLogTerm()
 
 	entry := models.LogEntry{
-		Term: n.RaftNode.CurrentTerm,
+		Term:    n.RaftNode.CurrentTerm,
 		Command: command,
 	}
 
 	n.RaftNode.LogEntries = append(n.RaftNode.LogEntries, entry)
 
 	args := AppendEntriesArgs{
-		Term: n.RaftNode.CurrentTerm,
-		LeaderID: int(n.RaftNode.ID),
+		Term:         n.RaftNode.CurrentTerm,
+		LeaderID:     int(n.RaftNode.ID),
 		PrevLogIndex: prevLogIndex,
-		PrevLogTerm: prevLogTerm,
-		Entries: []models.LogEntry{entry},
+		PrevLogTerm:  prevLogTerm,
+		Entries:      []models.LogEntry{entry},
 		LeaderCommit: n.RaftNode.CommitIndex,
 	}
 
@@ -190,7 +195,7 @@ func (n *Node) SubmitCommand(command string) error {
 			return fmt.Errorf("stepped down: higher term")
 		}
 		if reply.Success {
-			replicated ++
+			replicated++
 		}
 		n.mu.Unlock()
 	}
@@ -201,8 +206,10 @@ func (n *Node) SubmitCommand(command string) error {
 		if newIndex > n.RaftNode.CommitIndex {
 			n.RaftNode.CommitIndex = newIndex
 		}
+		n.applyCommittedLocked()
 		n.mu.Unlock()
 		log.Printf("Node %d committed index %d", n.RaftNode.ID, newIndex)
+
 	}
 
 	return nil
@@ -366,6 +373,8 @@ func (n *Node) HandleAppendEntries(args AppendEntriesArgs, reply *AppendEntriesR
 		}
 	}
 
+	n.applyCommittedLocked()
+	
 	reply.Success = true
 	n.mu.Unlock()
 

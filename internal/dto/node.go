@@ -17,4 +17,5 @@ type RaftNodeResponse struct {
 	MatchIndex  int               `json:"match_index"`
 	Peers       []uint            `json:"peers"`
 	Log         []models.LogEntry `json:"log"`
+	KV			map[string]string `json:"kv"`
 }

@@ -13,4 +13,5 @@ type RaftNodeResponse struct {
 	LastApplied int           `json:"last_applied"`
 	MatchIndex  int           `json:"match_index"`
 	Peers       []uint        `json:"peers"`
+	Log         []LogEntry    `json:"log"`
 }

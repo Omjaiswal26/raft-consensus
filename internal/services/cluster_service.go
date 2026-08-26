@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"raft-consensus/internal/raft"
 	"raft-consensus/models"
 )
@@ -21,4 +22,14 @@ func (s *ClusterService) Snapshot() []models.RaftNodeResponse {
 	}
 	
 	return out
+}
+
+func (s *ClusterService) SubmitCommand(command string) error {
+	for _, n := range s.nodes {
+		snap := n.Snapshot()
+		if snap.State == "leader" {
+			return  n.SubmitCommand(command)
+		}
+	}
+	return fmt.Errorf("no leader")
 }

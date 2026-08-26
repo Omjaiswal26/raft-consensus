@@ -19,7 +19,7 @@ func NewClusterHandler(service *services.ClusterService) *ClusterHandler {
 
 func (h *ClusterHandler) GetCluster(c *gin.Context) {
 	nodesSnapshot := h.service.Snapshot()
-	c.JSON(http.StatusOK, gin.H{
+	c.IndentedJSON(http.StatusOK, gin.H{
 		"nodes": nodesSnapshot,
 	})
 }
@@ -45,4 +45,22 @@ func (h *ClusterHandler) ServeWS(c *gin.Context) {
 			return
 		}
 	}
+}
+
+func (h *ClusterHandler) SubmitCommand(c *gin.Context) {
+	var body struct {
+		Command string `json:"command" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.service.SubmitCommand(body.Command); err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.IndentedJSON(http.StatusOK, gin.H{"ok": true})
 }

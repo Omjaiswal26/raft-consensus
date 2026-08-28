@@ -56,5 +56,7 @@ func main() {
 	svc := services.NewClusterService(nodes)
 	h := api.NewClusterHandler(svc)
 	r := api.NewRouter(h)
-	r.Run()
+	if err := r.Run(":8080"); err != nil {
+		log.Fatal(err)
+	}
 }

@@ -1,7 +1,14 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import type { ApiResponse, ClusterMessage, RaftNode } from "@/lib/types";
+import ReplicationGraph from "@/components/ReplicationGraph";
+import type {
+  ApiResponse,
+  RaftEvent,
+  RaftNode,
+  WsMessage,
+} from "@/lib/types";
+import { isClusterMessage, isRaftEvent } from "@/lib/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8080/ws";
@@ -19,6 +26,7 @@ function stateTone(state: string) {
 
 export default function ClusterDashboard() {
   const [nodes, setNodes] = useState<RaftNode[]>([]);
+  const [raftEvents, setRaftEvents] = useState<RaftEvent[]>([]);
   const [connected, setConnected] = useState(false);
   const [command, setCommand] = useState("SET z=3");
   const [status, setStatus] = useState("Connecting…");
@@ -43,9 +51,11 @@ export default function ClusterDashboard() {
       };
       ws.onmessage = (event) => {
         try {
-          const msg = JSON.parse(event.data) as ClusterMessage;
-          if (msg.type === "cluster" && Array.isArray(msg.nodes)) {
+          const msg = JSON.parse(event.data) as WsMessage;
+          if (isClusterMessage(msg) && Array.isArray(msg.nodes)) {
             setNodes(msg.nodes);
+          } else if (isRaftEvent(msg)) {
+            setRaftEvents((prev) => [...prev.slice(-49), msg]);
           }
         } catch {
           /* ignore malformed frames */
@@ -117,8 +127,7 @@ export default function ClusterDashboard() {
               Raft Consensus
             </h1>
             <p className="mt-3 max-w-xl text-sm leading-relaxed text-slate-400">
-              Live view of an in-process Raft cluster — roles, terms, replicated
-              log, and applied key-value state.
+              Live Raft cluster — replication graph, roles, log, and KV state.
             </p>
           </div>
           <div className="flex items-center gap-3 font-mono text-xs">
@@ -166,6 +175,8 @@ export default function ClusterDashboard() {
             Submit to leader
           </button>
         </form>
+
+        <ReplicationGraph nodes={nodes} events={raftEvents} />
 
         <section className="grid gap-4 md:grid-cols-3">
           {nodes.length === 0 && (

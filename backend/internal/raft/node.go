@@ -16,6 +16,7 @@ type Node struct {
 	electionTimeoutCh chan struct{}
 	mu                sync.Mutex
 	KV                map[string]string `json:"-"`
+	emitter           Emitter
 }
 
 func NewNode(raftNode *models.RaftNode) *Node {
@@ -24,6 +25,27 @@ func NewNode(raftNode *models.RaftNode) *Node {
 		electionTimeoutCh: make(chan struct{}, 1),
 		KV:                make(map[string]string),
 	}
+}
+
+func (n *Node) SetEmitter(e Emitter) {
+	n.emitter = e
+}
+
+func (n *Node) emit(typ string, to uint) {
+	if n.emitter == nil {
+		return
+	}
+
+	n.mu.Lock()
+	e := Event{
+		Type: typ,
+		From: n.RaftNode.ID,
+		To:   to,
+		Term: n.RaftNode.CurrentTerm,
+		At:   time.Now(),
+	}
+	n.mu.Unlock()
+	n.emitter.Emit(e)
 }
 
 func (n *Node) ResetElectionTimer() {
@@ -81,7 +103,8 @@ func (n *Node) BecomeCandidate() {
 	n.ResetElectionTimer()
 	log.Printf("Node %d became candidate for term %d", n.RaftNode.ID, term)
 
-	// Request votes from peers
+	n.emit(EventElectionStart, 0)
+
 	n.startElection()
 }
 
@@ -105,6 +128,9 @@ func (n *Node) startElection() {
 
 	for _, peer := range peers {
 		var reply RequestVoteReply
+
+		n.emit(EventRequestVote, peer.RaftNode.ID)
+
 		peer.HandleRequestVote(args, &reply)
 
 		n.mu.Lock()
@@ -145,6 +171,9 @@ func (n *Node) BecomeLeader() {
 	}
 
 	log.Printf("Node %d became leader for term %d", n.RaftNode.ID, term)
+
+	n.emit(EventBecameLeader, 0)
+
 	n.startHeartbeats()
 }
 
@@ -185,6 +214,9 @@ func (n *Node) SubmitCommand(command string) error {
 
 	for _, peer := range peers {
 		var reply AppendEntriesReply
+
+		n.emit(EventAppendEntries, peer.RaftNode.ID)
+
 		peer.HandleAppendEntries(args, &reply)
 
 		n.mu.Lock()
@@ -253,6 +285,7 @@ func (n *Node) broadcastHeartbeat() {
 
 	for _, peer := range peers {
 		var reply AppendEntriesReply
+		n.emit(EventHeartbeat, peer.RaftNode.ID)
 		peer.HandleAppendEntries(args, &reply)
 
 		n.mu.Lock()
@@ -321,6 +354,7 @@ func (n *Node) HandleRequestVote(args RequestVoteArgs, reply *RequestVoteReply) 
 	// Rule 4: granting vote resets election timer (heard from  a valid candidate)
 
 	if granted {
+		n.emit(EventVoteGranted, uint(candidateID))
 		n.ResetElectionTimer()
 	}
 }
@@ -374,7 +408,7 @@ func (n *Node) HandleAppendEntries(args AppendEntriesArgs, reply *AppendEntriesR
 	}
 
 	n.applyCommittedLocked()
-	
+
 	reply.Success = true
 	n.mu.Unlock()
 

@@ -12,10 +12,11 @@ import (
 
 type ClusterHandler struct {
 	service *services.ClusterService
+	hub     *Hub
 }
 
-func NewClusterHandler(service *services.ClusterService) *ClusterHandler {
-	return &ClusterHandler{service: service}
+func NewClusterHandler(service *services.ClusterService, hub *Hub) *ClusterHandler {
+	return &ClusterHandler{service: service, hub: hub}
 }
 
 func (h *ClusterHandler) GetCluster(c *gin.Context) {
@@ -24,7 +25,7 @@ func (h *ClusterHandler) GetCluster(c *gin.Context) {
 }
 
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {return true},
+	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
 func (h *ClusterHandler) ServeWS(c *gin.Context) {
@@ -32,16 +33,22 @@ func (h *ClusterHandler) ServeWS(c *gin.Context) {
 	if err != nil {
 		return
 	}
-	defer conn.Close()
 
-	// v1: push snapshot every 200-500ms
+	client := h.hub.Register(conn)
+	defer h.hub.Unregister(client)
+
 	ticker := time.NewTicker(300 * time.Millisecond)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		snapshot := h.service.Snapshot()
-		if err := conn.WriteJSON(gin.H{"type": "cluster", "nodes": snapshot}); err != nil {
+	for {
+		select {
+		case <-client.done:
 			return
+		case <-ticker.C:
+			snapshot := h.service.Snapshot()
+			if !h.hub.Send(client, gin.H{"type": "cluster", "nodes": snapshot}) {
+				return
+			}
 		}
 	}
 }

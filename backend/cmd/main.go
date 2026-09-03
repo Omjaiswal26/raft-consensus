@@ -30,6 +30,11 @@ func main() {
 
 	raft.WireRuntimePeers(nodes)
 
+	hub := api.NewHub()
+	for _, node := range nodes {
+		node.SetEmitter(hub)
+	}
+
 	for _, node := range nodes {
 		node.Start()
 	}
@@ -54,7 +59,7 @@ func main() {
 	}
 
 	svc := services.NewClusterService(nodes)
-	h := api.NewClusterHandler(svc)
+	h := api.NewClusterHandler(svc, hub)
 	r := api.NewRouter(h)
 	if err := r.Run(":8080"); err != nil {
 		log.Fatal(err)

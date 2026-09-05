@@ -2,8 +2,6 @@ package models
 
 import (
 	"time"
-
-	"gorm.io/gorm"
 )
 
 type LogEntry struct {
@@ -12,15 +10,13 @@ type LogEntry struct {
 }
 
 type RaftNode struct {
-	gorm.Model
+	ID          uint          `json:"id"`
 	State       string        `json:"state"` // Leader, Candidate, Follower
 	CurrentTerm int           `json:"current_term"`
 	VotedFor    *int          `json:"voted_for"`
 	LogEntries  []LogEntry    `json:"log_entries" gorm:"serializer:json"`
 	CommitIndex int           `json:"commit_index"`
 	LastApplied int           `json:"last_applied"`
-	NextIndex   int           `json:"next_index"`
-	MatchIndex  int           `json:"match_index"`
 	PeerIDs     []uint        `json:"peer_ids" gorm:"serializer:json"`
 	LeaderID    *int          `json:"leader_id"`
 	Timeout     time.Duration `json:"timeout"`

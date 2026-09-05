@@ -17,6 +17,8 @@ type Node struct {
 	mu                sync.Mutex
 	KV                map[string]string `json:"-"`
 	emitter           Emitter
+	nextIndex         map[uint]uint
+	matchIndex        map[uint]uint
 }
 
 func NewNode(raftNode *models.RaftNode) *Node {
@@ -160,10 +162,29 @@ func (n *Node) startElection() {
 
 func (n *Node) BecomeLeader() {
 	n.mu.Lock()
+
 	n.RaftNode.State = "leader"
 	leaderID := int(n.RaftNode.ID)
+
 	n.RaftNode.LeaderID = &leaderID
 	term := n.RaftNode.CurrentTerm
+
+	n.nextIndex = make(map[uint]uint)
+	n.matchIndex = make(map[uint]uint)
+
+	lastLogIndex := uint(len(n.RaftNode.LogEntries))
+
+	for _, peer := range n.Peers {
+		if peer == nil || peer == n {
+			continue
+		}
+
+		peerID := peer.RaftNode.ID
+
+		n.nextIndex[peerID] = lastLogIndex + 1
+		n.matchIndex[peerID] = 0
+	}
+
 	n.mu.Unlock()
 
 	if n.ElectionTimer != nil {
@@ -173,7 +194,6 @@ func (n *Node) BecomeLeader() {
 	log.Printf("Node %d became leader for term %d", n.RaftNode.ID, term)
 
 	n.emit(EventBecameLeader, 0)
-
 	n.startHeartbeats()
 }
 
@@ -228,6 +248,12 @@ func (n *Node) SubmitCommand(command string) error {
 		}
 		if reply.Success {
 			replicated++
+			n.matchIndex[peer.RaftNode.ID] = uint(newIndex)
+			n.nextIndex[peer.RaftNode.ID] = uint(newIndex) + 1
+		} else {
+			if n.nextIndex[peer.RaftNode.ID] > 1 {
+				n.nextIndex[peer.RaftNode.ID]--
+			}
 		}
 		n.mu.Unlock()
 	}
@@ -272,20 +298,43 @@ func (n *Node) broadcastHeartbeat() {
 		return
 	}
 
-	args := AppendEntriesArgs{
-		Term:         n.RaftNode.CurrentTerm,
-		LeaderID:     int(n.RaftNode.ID),
-		PrevLogIndex: n.lastLogIndex(),
-		PrevLogTerm:  n.lastLogTerm(),
-		Entries:      nil,
-		LeaderCommit: n.RaftNode.CommitIndex,
-	}
 	peers := n.Peers
 	n.mu.Unlock()
 
 	for _, peer := range peers {
+		peerID := peer.RaftNode.ID
+
+		n.mu.Lock()
+
+		ni := n.nextIndex[peerID]
+		if ni < 1 {
+			ni = 1
+		}
+
+		prev := int(ni) - 1
+		prevTerm := 0
+		if prev > 0 {
+			prevTerm = n.RaftNode.LogEntries[prev-1].Term
+		}
+
+		entries := append([]models.LogEntry(nil), n.RaftNode.LogEntries[ni-1:]...)
+
+		args := AppendEntriesArgs{
+			Term:         n.RaftNode.CurrentTerm,
+			LeaderID:     int(n.RaftNode.ID),
+			PrevLogIndex: prev,
+			PrevLogTerm:  prevTerm,
+			Entries:      entries,
+			LeaderCommit: n.RaftNode.CommitIndex,
+		}
+		n.mu.Unlock()
+
 		var reply AppendEntriesReply
-		n.emit(EventHeartbeat, peer.RaftNode.ID)
+		if len(entries) == 0 {
+			n.emit(EventHeartbeat, peer.RaftNode.ID)
+		} else {
+			n.emit(EventAppendEntries, peerID)
+		}
 		peer.HandleAppendEntries(args, &reply)
 
 		n.mu.Lock()
@@ -294,6 +343,13 @@ func (n *Node) broadcastHeartbeat() {
 			n.stopHeartbeats()
 			n.BecomeFollower(reply.Term)
 			return
+		}
+		if reply.Success {
+			match := uint(prev + len(entries))
+			n.matchIndex[peerID] = match
+			n.nextIndex[peerID] = match + 1
+		} else if n.nextIndex[peerID] > 1 {
+			n.nextIndex[peerID]--
 		}
 		n.mu.Unlock()
 	}

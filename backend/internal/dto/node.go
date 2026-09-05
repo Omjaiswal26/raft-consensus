@@ -14,8 +14,9 @@ type RaftNodeResponse struct {
 	LeaderID    *int              `json:"leader_id"`
 	CommitIndex int               `json:"commit_index"`
 	LastApplied int               `json:"last_applied"`
-	MatchIndex  int               `json:"match_index"`
 	Peers       []uint            `json:"peers"`
 	Log         []models.LogEntry `json:"log"`
-	KV			map[string]string `json:"kv"`
+	KV          map[string]string `json:"kv"`
+	NextIndex   map[uint]uint     `json:"next_index,omitempty"`
+	MatchIndex  map[uint]uint     `json:"match_index,omitempty"`
 }

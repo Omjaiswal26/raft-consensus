@@ -19,6 +19,7 @@ type Node struct {
 	emitter           Emitter
 	nextIndex         map[uint]uint
 	matchIndex        map[uint]uint
+	Alive             bool
 }
 
 func NewNode(raftNode *models.RaftNode) *Node {
@@ -26,6 +27,7 @@ func NewNode(raftNode *models.RaftNode) *Node {
 		RaftNode:          raftNode,
 		electionTimeoutCh: make(chan struct{}, 1),
 		KV:                make(map[string]string),
+		Alive:             true,
 	}
 }
 
@@ -230,7 +232,6 @@ func (n *Node) SubmitCommand(command string) error {
 
 	log.Printf("Node %d appended command %q at index %d", n.RaftNode.ID, command, newIndex)
 
-
 	for _, peer := range peers {
 		var reply AppendEntriesReply
 
@@ -342,8 +343,6 @@ func (n *Node) broadcastHeartbeat() {
 		n.mu.Unlock()
 	}
 }
-
-
 
 func (n *Node) lastLogIndex() int {
 	return len(n.RaftNode.LogEntries)

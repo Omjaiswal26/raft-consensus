@@ -205,39 +205,45 @@ export default function ClusterDashboard() {
                 </div>
               </div>
 
-              {node.state === "leader" &&
-                (node.match_index || node.next_index) && (
+              {node.state === "leader" && node.match_index && (
                   <div>
                     <h3 className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] opacity-60">
                       Replication
                     </h3>
-                    <ul className="space-y-1 rounded-xl border border-white/5 bg-black/20 p-2 font-mono text-[11px]">
-                      {Object.keys({
-                        ...(node.match_index ?? {}),
-                        ...(node.next_index ?? {}),
-                      })
+                    <ul className="space-y-2 rounded-xl border border-white/5 bg-black/20 p-2 font-mono text-[11px]">
+                      {Object.keys(node.match_index)
                         .map(Number)
                         .sort((a, b) => a - b)
                         .map((peerId) => {
                           const match = node.match_index?.[peerId] ?? 0;
-                          const next = node.next_index?.[peerId] ?? 0;
                           const tip = (node.log ?? []).length;
-                          const behind = match < tip;
+                          const lag = Math.max(0, tip - match);
+                          const synced = lag === 0;
+                          const pct = tip === 0 ? 100 : Math.min(100, (match / tip) * 100);
                           return (
                             <li
                               key={`${node.id}-peer-${peerId}`}
                               className={
-                                behind ? "text-amber-200/90" : "text-emerald-200/80"
+                                synced ? "text-emerald-200/80" : "text-amber-200/90"
                               }
+                              title={`match ${match} · next ${node.next_index?.[peerId] ?? "—"}`}
                             >
-                              peer {peerId}
-                              <span className="opacity-50"> · </span>
-                              match {match}
-                              <span className="opacity-50"> · </span>
-                              next {next}
-                              {behind && (
-                                <span className="opacity-70"> · lag {tip - match}</span>
-                              )}
+                              <div className="mb-1 flex items-center justify-between gap-2">
+                                <span>peer {peerId}</span>
+                                <span className="opacity-90">
+                                  {tip === 0
+                                    ? "synced"
+                                    : `${match}/${tip} · ${synced ? "synced" : `behind by ${lag}`}`}
+                                </span>
+                              </div>
+                              <div className="h-1 overflow-hidden rounded-full bg-white/10">
+                                <div
+                                  className={`h-full rounded-full transition-all ${
+                                    synced ? "bg-emerald-400/80" : "bg-amber-400/80"
+                                  }`}
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
                             </li>
                           );
                         })}

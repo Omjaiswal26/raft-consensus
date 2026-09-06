@@ -33,3 +33,43 @@ func (s *ClusterService) SubmitCommand(command string) error {
 	}
 	return fmt.Errorf("no leader")
 }
+
+func (s *ClusterService) CrashNode(nodeID uint) error {
+	nodes := s.nodes
+
+	var reqNode *raft.Node
+
+	for _, node := range nodes {
+		if node.RaftNode.ID == nodeID {
+			reqNode = node
+			break
+		}
+	}
+
+	if reqNode == nil {
+		return fmt.Errorf("node %d not found", nodeID)
+	}
+
+	reqNode.Alive = false
+	return nil
+}
+
+func (s *ClusterService) RecoverNode(nodeID uint) error {
+	nodes := s.nodes
+
+	var reqNode *raft.Node
+
+	for _, node := range nodes {
+		if node.RaftNode.ID == nodeID {
+			reqNode = node
+			break
+		}
+	}
+
+	if reqNode == nil {
+		return fmt.Errorf("node %d not found", nodeID)
+	}
+
+	reqNode.Alive = true
+	return nil
+}

@@ -39,7 +39,7 @@ func main() {
 		node.Start()
 	}
 
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(5 * time.Second)
 	var leader *raft.Node
 	for _, node := range nodes {
 		if node.RaftNode.State == "leader" {

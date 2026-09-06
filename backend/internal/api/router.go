@@ -25,9 +25,14 @@ func NewRouter(h *ClusterHandler) *gin.Engine {
 		c.Next()
 	})
 
-	r.GET("/api/cluster", h.GetCluster)
 	r.GET("/ws", h.ServeWS)
-	r.POST("/api/command", h.SubmitCommand)
+
+	api := r.Group("/api")
+	api.GET("/cluster", h.GetCluster)
+	api.POST("/command", h.SubmitCommand)
+
+	api.POST("/nodes/:id/crash", h.CrashNode)
+	api.POST("/nodes/:id/recover", h.RecoverNode)
 
 	return r
 }

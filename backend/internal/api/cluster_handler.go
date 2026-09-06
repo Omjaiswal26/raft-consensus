@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"raft-consensus/internal/response"
 	"raft-consensus/internal/services"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -69,4 +70,42 @@ func (h *ClusterHandler) SubmitCommand(c *gin.Context) {
 	}
 
 	response.SuccessResponse(c, "Command submitted successfully", nil)
+}
+
+func (h *ClusterHandler) CrashNode(c *gin.Context) {
+	nodeIDStr := c.Param("id")
+
+	nodeID64, err := strconv.ParseUint(nodeIDStr, 10, 0)
+	if err != nil {
+		response.ErrorResponse(c, 400, "Invalid node id: "+err.Error())
+		return
+	}
+
+	nodeID := uint(nodeID64)
+
+	if err := h.service.CrashNode(nodeID); err != nil {
+		response.ErrorResponse(c, 500, "Failed to crash node: "+err.Error())
+		return
+	}
+
+	response.SuccessResponse(c, "Node crashed successfully", nil)
+}
+
+func (h *ClusterHandler) RecoverNode(c *gin.Context) {
+	nodeIDStr := c.Param("id")
+
+	nodeID64, err := strconv.ParseUint(nodeIDStr, 10, 0)
+	if err != nil {
+		response.ErrorResponse(c, 400, "Invalid node id: "+err.Error())
+		return
+	}
+
+	nodeID := uint(nodeID64)
+
+	if err := h.service.RecoverNode(nodeID); err != nil {
+		response.ErrorResponse(c, 500, "Failed to recover node: "+err.Error())
+		return
+	}
+
+	response.SuccessResponse(c, "Node recovered successfully", nil)
 }

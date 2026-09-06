@@ -230,7 +230,6 @@ func (n *Node) SubmitCommand(command string) error {
 
 	log.Printf("Node %d appended command %q at index %d", n.RaftNode.ID, command, newIndex)
 
-	replicated := 1
 
 	for _, peer := range peers {
 		var reply AppendEntriesReply
@@ -247,7 +246,6 @@ func (n *Node) SubmitCommand(command string) error {
 			return fmt.Errorf("stepped down: higher term")
 		}
 		if reply.Success {
-			replicated++
 			n.matchIndex[peer.RaftNode.ID] = uint(newIndex)
 			n.nextIndex[peer.RaftNode.ID] = uint(newIndex) + 1
 		} else {
@@ -255,19 +253,8 @@ func (n *Node) SubmitCommand(command string) error {
 				n.nextIndex[peer.RaftNode.ID]--
 			}
 		}
+		n.maybeCommitLocked()
 		n.mu.Unlock()
-	}
-
-	majority := len(peers)/2 + 1
-	if replicated >= majority {
-		n.mu.Lock()
-		if newIndex > n.RaftNode.CommitIndex {
-			n.RaftNode.CommitIndex = newIndex
-		}
-		n.applyCommittedLocked()
-		n.mu.Unlock()
-		log.Printf("Node %d committed index %d", n.RaftNode.ID, newIndex)
-
 	}
 
 	return nil
@@ -351,9 +338,12 @@ func (n *Node) broadcastHeartbeat() {
 		} else if n.nextIndex[peerID] > 1 {
 			n.nextIndex[peerID]--
 		}
+		n.maybeCommitLocked()
 		n.mu.Unlock()
 	}
 }
+
+
 
 func (n *Node) lastLogIndex() int {
 	return len(n.RaftNode.LogEntries)

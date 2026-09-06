@@ -205,6 +205,46 @@ export default function ClusterDashboard() {
                 </div>
               </div>
 
+              {node.state === "leader" &&
+                (node.match_index || node.next_index) && (
+                  <div>
+                    <h3 className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] opacity-60">
+                      Replication
+                    </h3>
+                    <ul className="space-y-1 rounded-xl border border-white/5 bg-black/20 p-2 font-mono text-[11px]">
+                      {Object.keys({
+                        ...(node.match_index ?? {}),
+                        ...(node.next_index ?? {}),
+                      })
+                        .map(Number)
+                        .sort((a, b) => a - b)
+                        .map((peerId) => {
+                          const match = node.match_index?.[peerId] ?? 0;
+                          const next = node.next_index?.[peerId] ?? 0;
+                          const tip = (node.log ?? []).length;
+                          const behind = match < tip;
+                          return (
+                            <li
+                              key={`${node.id}-peer-${peerId}`}
+                              className={
+                                behind ? "text-amber-200/90" : "text-emerald-200/80"
+                              }
+                            >
+                              peer {peerId}
+                              <span className="opacity-50"> · </span>
+                              match {match}
+                              <span className="opacity-50"> · </span>
+                              next {next}
+                              {behind && (
+                                <span className="opacity-70"> · lag {tip - match}</span>
+                              )}
+                            </li>
+                          );
+                        })}
+                    </ul>
+                  </div>
+                )}
+
               <div>
                 <h3 className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] opacity-60">
                   Log

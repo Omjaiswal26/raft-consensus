@@ -14,6 +14,8 @@ export type RaftNode = {
   peers: number[];
   log: LogEntry[];
   kv: Record<string, string>;
+  next_index?: Record<number, number>;
+  match_index?: Record<number, number>;
 };
 
 export type RaftEventType =

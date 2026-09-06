@@ -35,3 +35,29 @@ func (n *Node) applyCommand(command string) {
 		}
 	}
 }
+
+
+func (n *Node) maybeCommitLocked() {
+	lastIdx := n.lastLogIndex()
+	commitIdx := n.RaftNode.CommitIndex
+	term := n.RaftNode.CurrentTerm
+	majority := len(n.Peers)/2 + 1
+
+	for i:=lastIdx; i > commitIdx; i-- {
+		if n.RaftNode.LogEntries[i-1].Term != term {
+			continue
+		}
+
+		count := 1 
+		for _, peer := range n.Peers {
+			if n.matchIndex[peer.RaftNode.ID] >= uint(i) {
+				count ++
+			}
+		}
+		if count >= majority {
+			n.RaftNode.CommitIndex = i
+			n.applyCommittedLocked()
+			return
+		}
+	}  
+}

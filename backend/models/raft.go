@@ -9,6 +9,7 @@ type LogEntry struct {
 	Command string `json:"command"`
 }
 
+// Protocol state struct, currently in memory
 type RaftNode struct {
 	ID          uint          `json:"id"`
 	State       string        `json:"state"` // Leader, Candidate, Follower

@@ -8,6 +8,7 @@ import (
 	"time"
 )
 
+// holds runtime behaviour 
 type Node struct {
 	RaftNode          *models.RaftNode
 	Peers             []*Node
@@ -15,7 +16,7 @@ type Node struct {
 	heartbeatTicker   *time.Ticker
 	electionTimeoutCh chan struct{}
 	mu                sync.Mutex
-	KV                map[string]string `json:"-"`
+	KV                map[string]string `json:"-"`  // state machine
 	emitter           Emitter
 	nextIndex         map[uint]uint
 	matchIndex        map[uint]uint

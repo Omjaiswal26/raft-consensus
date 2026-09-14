@@ -11,14 +11,11 @@ import (
 
 func main() {
 	nodes := []*raft.Node{
-		raft.NewNode(&models.RaftNode{State: "follower"}),
-		raft.NewNode(&models.RaftNode{State: "follower"}),
-		raft.NewNode(&models.RaftNode{State: "follower"}),
+		raft.NewNode(&models.RaftNode{ID: 1, State: "follower"}),
+		raft.NewNode(&models.RaftNode{ID: 2, State: "follower"}),
+		raft.NewNode(&models.RaftNode{ID: 3, State: "follower"}),
 	}
 
-	for i, node := range nodes {
-		node.RaftNode.ID = uint(i + 1)
-	}
 
 	for i, node := range nodes {
 		for j := range nodes {
